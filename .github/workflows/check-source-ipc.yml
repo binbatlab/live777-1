@@ -1,0 +1,16 @@
+name: check source-ipc (scratch verification, remove before merge)
+
+on:
+  push:
+    branches: ["feat/rv1106-ipc-encoded-source"]
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo check -p liveion --features source-ipc
+      - run: cargo test -p liveion --features source-ipc
+      - run: cargo clippy -p liveion --features source-ipc -- -D warnings

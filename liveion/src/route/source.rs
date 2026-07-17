@@ -69,6 +69,8 @@ async fn create_source(
         encoder: None,
         #[cfg(feature = "native-source")]
         output: Default::default(),
+        #[cfg(feature = "source-ipc")]
+        ipc: None,
     };
 
     let source = create_source_from_url(&stream, &req.url, &config).await?;

@@ -31,7 +31,7 @@ reqwest = { workspace = true, features = ["json"], optional = true }
 rand = "0.10"
 serde = { workspace = true, features = ["serde_derive"] }
 serde_json = { workspace = true }
-tokio = { workspace = true, features = ["fs"] }
+tokio = { workspace = true, features = ["fs", "net"] }
 tokio-stream = { version = "0.1.15", features = ["sync"] }
 tokio-util = { workspace = true }
 async-stream = "0.3.5"
@@ -83,6 +83,11 @@ source-rtsp = ["source"]
 source-all = ["source-sdp", "source-rtsp"]
 
 native-source = ["source", "dep:livehal"]
+
+# Encoded-bitstream-over-IPC source: consumes an already-encoded stream
+# from an external helper process over a Unix domain socket. Does not
+# depend on livehal/FFI — no C++ toolchain required to build this path.
+source-ipc = ["source"]
 
 # Capture backends
 capture-libcamera = ["native-source", "livehal/capture-libcamera"]

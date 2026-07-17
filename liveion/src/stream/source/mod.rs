@@ -2,9 +2,9 @@ use anyhow::Result;
 use async_trait::async_trait;
 #[cfg(any(feature = "source-rtsp", feature = "source-sdp"))]
 use bytes::Bytes;
-#[cfg(feature = "native-source")]
+#[cfg(any(feature = "native-source", feature = "source-ipc"))]
 use rtc::rtp::packet::Packet;
-#[cfg(feature = "native-source")]
+#[cfg(any(feature = "native-source", feature = "source-ipc"))]
 use std::sync::Arc;
 use tokio::sync::broadcast;
 
@@ -13,15 +13,19 @@ mod rtsp_source;
 #[cfg(feature = "source-sdp")]
 mod sdp_source;
 
+#[cfg(any(feature = "native-source", feature = "source-ipc"))]
+pub(crate) mod h264_util;
 #[cfg(feature = "native-source")]
 pub mod native_encoded_source;
-#[cfg(feature = "native-source")]
+#[cfg(any(feature = "native-source", feature = "source-ipc"))]
 pub mod source_config;
 pub mod source_router;
 
 pub mod manager;
 #[cfg(feature = "native-source")]
 pub mod native_source;
+#[cfg(feature = "source-ipc")]
+pub mod ipc_encoded_source;
 
 #[cfg(feature = "source-rtsp")]
 pub use rtsp_source::RtspSource;
@@ -51,7 +55,7 @@ pub struct StateChangeEvent {
 pub enum MediaPacket {
     #[cfg(any(feature = "source-rtsp", feature = "source-sdp"))]
     Rtp { channel: u8, data: Bytes },
-    #[cfg(feature = "native-source")]
+    #[cfg(any(feature = "native-source", feature = "source-ipc"))]
     RtpPacket(Arc<Packet>),
     // Placeholder when no concrete source implementation is enabled.
     // The `source` feature alone has no active source types, so this
@@ -59,7 +63,8 @@ pub enum MediaPacket {
     #[cfg(not(any(
         feature = "source-rtsp",
         feature = "source-sdp",
-        feature = "native-source"
+        feature = "native-source",
+        feature = "source-ipc"
     )))]
     _Unused,
 }
@@ -140,6 +145,13 @@ pub async fn create_source_from_spec(
     spec: &source_config::SourceSpec,
 ) -> Result<Box<dyn StreamSource>> {
     source_router::create_source_from_spec(spec).await
+}
+
+#[cfg(feature = "source-ipc")]
+pub async fn create_ipc_source_from_spec(
+    spec: &source_config::IpcSourceSpec,
+) -> Result<Box<dyn StreamSource>> {
+    source_router::create_ipc_source_from_spec(spec).await
 }
 
 #[cfg(any(feature = "source-rtsp", feature = "source-sdp"))]

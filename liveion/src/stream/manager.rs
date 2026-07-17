@@ -572,6 +572,24 @@ impl Manager {
 
         for (stream_id, entry) in &stream_config.streams {
             for source_cfg in &entry.sources {
+                // IPC sources: encoded bitstream over a Unix domain socket
+                #[cfg(feature = "source-ipc")]
+                if let Some(spec) = source_cfg.to_ipc_spec(stream_id) {
+                    tracing::info!(
+                        "Auto-starting IPC source: {} (socket={})",
+                        spec.stream_id,
+                        spec.socket_path
+                    );
+                    let source = match create_ipc_source_from_spec(&spec).await {
+                        Ok(s) => s,
+                        Err(e) => {
+                            tracing::error!("Failed to create source {}: {}", spec.stream_id, e);
+                            continue;
+                        }
+                    };
+                    self.start_single_source(source, &spec.stream_id).await;
+                    continue;
+                }
                 // Structured native sources: kind + capture + encoder
                 #[cfg(feature = "native-source")]
                 if let Some(spec) = source_cfg.to_spec(stream_id) {

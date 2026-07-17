@@ -449,10 +449,21 @@ pub struct SourceConfig {
     #[cfg(feature = "native-source")]
     #[serde(default)]
     pub output: crate::stream::source::source_config::OutputSpec,
+
+    /// IPC source config (required for encoded-bitstream-over-socket sources).
+    /// Mutually exclusive with `url` and `capture`/`encoder`.
+    #[cfg(feature = "source-ipc")]
+    #[serde(default)]
+    pub ipc: Option<crate::stream::source::source_config::IpcSourceSpec>,
 }
 
 impl SourceConfig {
     pub fn validate(&self) -> anyhow::Result<()> {
+        #[cfg(feature = "source-ipc")]
+        if let Some(ipc) = self.ipc.as_ref() {
+            return ipc.validate();
+        }
+
         #[cfg(feature = "native-source")]
         if self.capture.is_some() {
             let capture = self
@@ -484,6 +495,9 @@ impl SourceConfig {
 
         let url = self.url.as_deref().unwrap_or("");
         if url.is_empty() {
+            #[cfg(feature = "source-ipc")]
+            anyhow::bail!("either url, capture, or ipc must be set");
+            #[cfg(not(feature = "source-ipc"))]
             anyhow::bail!("either url or capture must be set");
         }
 
@@ -515,5 +529,16 @@ impl SourceConfig {
             encoder,
             output: self.output.clone(),
         })
+    }
+
+    /// Build an `IpcSourceSpec` from structured fields (for IPC sources).
+    #[cfg(feature = "source-ipc")]
+    pub fn to_ipc_spec(
+        &self,
+        stream_id: &str,
+    ) -> Option<crate::stream::source::source_config::IpcSourceSpec> {
+        let mut ipc = self.ipc.clone()?;
+        ipc.stream_id = stream_id.to_string();
+        Some(ipc)
     }
 }

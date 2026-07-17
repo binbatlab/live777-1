@@ -379,6 +379,62 @@ impl SourceSpec {
 }
 
 // ---------------------------------------------------------------------------
+// IPC source configuration (encoded bitstream over a Unix domain socket)
+// ---------------------------------------------------------------------------
+
+/// Specification for a source that receives an already-encoded bitstream
+/// from an external process (e.g. a hardware-encoder helper) over a local
+/// Unix domain socket, instead of doing capture/encode in-process via
+/// `livehal` FFI.
+///
+/// ```toml
+/// [stream.cam0]
+/// [[stream.cam0.sources]]
+///
+/// [stream.cam0.sources.ipc]
+/// socket_path = "/run/radarcam/encoder-cam0.sock"
+/// codec = "h264"
+/// profile = "42001f"
+/// payload_type = 96
+/// clock_rate = 90000
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IpcSourceSpec {
+    /// Unique stream identifier. Not read from TOML directly — populated
+    /// from the enclosing `[stream.<id>]` table key by
+    /// `SourceConfig::to_ipc_spec`, mirroring how `SourceSpec::stream_id`
+    /// is filled in by `SourceConfig::to_spec`.
+    #[serde(default)]
+    pub stream_id: String,
+    /// Filesystem path of the Unix domain socket the encoder helper process
+    /// listens on. This source connects to it as a client and reconnects
+    /// automatically if the connection drops.
+    pub socket_path: String,
+    /// Video codec of the incoming bitstream: `"h264"` or `"h265"`.
+    pub codec: String,
+    /// Default codec profile-level-id (hex string, e.g. `"42001f"`), used
+    /// for SDP negotiation until/unless a dynamic value is detected from
+    /// the stream itself (H.264 only).
+    pub profile: String,
+    /// RTP output parameters.
+    #[serde(default)]
+    pub output: OutputSpec,
+}
+
+impl IpcSourceSpec {
+    pub fn validate(&self) -> anyhow::Result<()> {
+        if self.stream_id.trim().is_empty() {
+            anyhow::bail!("stream_id cannot be empty");
+        }
+        if self.socket_path.trim().is_empty() {
+            anyhow::bail!("ipc.socket_path cannot be empty");
+        }
+        video_codec_from_str(&self.codec).map_err(|e| anyhow::anyhow!("ipc.codec: {}", e))?;
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 

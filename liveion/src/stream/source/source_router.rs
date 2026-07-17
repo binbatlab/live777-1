@@ -15,6 +15,11 @@ use super::native_source::NativeSource;
 #[cfg(feature = "native-source")]
 use super::source_config::SourceSpec;
 
+#[cfg(feature = "source-ipc")]
+use super::ipc_encoded_source::IpcEncodedSource;
+#[cfg(feature = "source-ipc")]
+use super::source_config::IpcSourceSpec;
+
 /// Creates a `StreamSource` from a connection URL.
 ///
 /// Delegates rtsp://, file://, .sdp to the URL-based source factory.
@@ -40,4 +45,12 @@ pub async fn create_source_extended(
 #[cfg(feature = "native-source")]
 pub async fn create_source_from_spec(spec: &SourceSpec) -> Result<Box<dyn StreamSource>> {
     Ok(Box::new(NativeSource::from_spec(spec)?))
+}
+
+/// Create a `StreamSource` from a structured [`IpcSourceSpec`].
+#[cfg(feature = "source-ipc")]
+pub async fn create_ipc_source_from_spec(
+    spec: &IpcSourceSpec,
+) -> Result<Box<dyn StreamSource>> {
+    Ok(Box::new(IpcEncodedSource::new(spec.clone())?))
 }

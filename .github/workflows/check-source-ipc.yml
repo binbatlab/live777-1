@@ -35,14 +35,14 @@ jobs:
           name: live777-rv1106-musl
           path: |
             target/arm-unknown-linux-musleabihf/release/live777
-            conf/live777.toml
+            conf/live777-rv1106.toml
       - name: Publish latest RV1106 live777 bundle
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           stage="$(mktemp -d)"
           cp target/arm-unknown-linux-musleabihf/release/live777 "$stage/"
-          cp conf/live777.toml "$stage/"
+          cp conf/live777-rv1106.toml "$stage/live777.toml"
           printf '%s\n' "$GITHUB_SHA" > "$stage/source-commit.txt"
           cd "$stage"
           git init

@@ -1445,6 +1445,21 @@ impl PeerForwardInternal {
             gather_complete.clone(),
             connection_state.clone(),
         );
+        for addr in &self.ice_udp_addrs {
+            let socket = std::net::UdpSocket::bind(addr).map_err(|error| {
+                AppError::throw(format!("WebRTC UDP probe bind failed for {addr}: {error}"))
+            })?;
+            socket.set_nonblocking(true).map_err(|error| {
+                AppError::throw(format!(
+                    "WebRTC UDP probe nonblocking failed for {addr}: {error}"
+                ))
+            })?;
+            let _socket = tokio::net::UdpSocket::from_std(socket).map_err(|error| {
+                AppError::throw(format!(
+                    "WebRTC UDP probe Tokio registration failed for {addr}: {error}"
+                ))
+            })?;
+        }
         let peer: Arc<dyn PeerConnection> = Arc::new(
             PeerConnectionBuilder::<std::net::SocketAddr>::new()
                 .with_media_engine(m)

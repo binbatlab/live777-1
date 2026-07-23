@@ -1,12 +1,16 @@
+# USB-local deployment has no Internet/default route; host candidates are
+# sufficient and avoid STUN gather attempts failing with ENODEV.
+ice_servers = []
+
 [http]
 listen = "0.0.0.0:7777"
 cors = true
 
 [webrtc]
-# The development PC reaches the board over USB RNDIS (currently
-# 172.32.0.93/16). "auto" lets live777 advertise that usable host address
-# instead of the non-routable 0.0.0.0 bind address.
-ice_udp_addrs = ["auto"]
+# Bind explicitly to USB RNDIS. This board has no default route, so "auto"
+# cannot discover an address by probing an Internet destination and falls
+# back to loopback.
+ice_udp_addrs = ["172.32.0.93:0"]
 
 [stream.cam0]
 [[stream.cam0.sources]]

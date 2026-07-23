@@ -1,5 +1,8 @@
 name: check source-ipc (scratch verification, remove before merge)
 
+permissions:
+  contents: write
+
 on:
   push:
     branches: ["feat/rv1106-ipc-encoded-source"]
@@ -15,6 +18,42 @@ jobs:
       - run: cargo test -p liveion --features source-ipc
       - name: Check final live777 binary with the IPC source enabled
         run: cargo check --bin live777 --no-default-features --features source-ipc
+      - name: Install cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+      - name: Build minimal static RV1106 live777
+        run: |
+          cross build --locked \
+            --target arm-unknown-linux-musleabihf \
+            --bin live777 \
+            --release \
+            --no-default-features \
+            --features source-ipc
+          file target/arm-unknown-linux-musleabihf/release/live777
+      - name: Upload RV1106 live777 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: live777-rv1106-musl
+          path: |
+            target/arm-unknown-linux-musleabihf/release/live777
+            conf/live777.toml
+      - name: Publish latest RV1106 live777 bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          stage="$(mktemp -d)"
+          cp target/arm-unknown-linux-musleabihf/release/live777 "$stage/"
+          cp conf/live777.toml "$stage/"
+          printf '%s\n' "$GITHUB_SHA" > "$stage/source-commit.txt"
+          cd "$stage"
+          git init
+          git checkout --orphan build-output
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add live777 live777.toml source-commit.txt
+          git commit -m "RV1106 live777 build ${GITHUB_SHA}"
+          git remote add origin \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push --force origin HEAD:refs/heads/build-output/rv1106-live777
       # Not running clippy -D warnings here: source-ipc alone (without
       # native-source) is a feature combination upstream's own CI never
       # exercises in isolation, so a bunch of native-source-only code

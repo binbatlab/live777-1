@@ -1,0 +1,32 @@
+# USB-local deployment has no Internet/default route; host candidates are
+# sufficient and avoid STUN gather attempts failing with ENODEV.
+ice_servers = []
+
+[http]
+listen = "0.0.0.0:7777"
+cors = true
+
+[webrtc]
+# Bind explicitly to USB RNDIS. This board has no default route, so "auto"
+# cannot discover an address by probing an Internet destination and falls
+# back to loopback.
+ice_udp_addrs = ["172.32.0.93:0"]
+
+[stream.cam0]
+[[stream.cam0.sources]]
+[stream.cam0.sources.ipc]
+socket_path = "/run/radarcam/encoder-cam0.sock"
+codec = "h264"
+# RV1106 VENC u32Profile=100 emits SPS 67 64 10 28:
+# High Profile, constraint flags 0x10, Level 4.0.
+profile = "641028"
+
+[stream.cam0.sources.ipc.output]
+payload_type = 96
+clock_rate = 90000
+
+[log]
+level = "info"
+
+[strategy]
+auto_create_whep = true

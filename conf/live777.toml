@@ -41,6 +41,26 @@ ice_udp_addrs = ["auto"]
 # [[stream.test-source.sources]]
 # url = "rtsp://username:password@host:port/path"
 
+# --- RV1106 external hardware encoder over Unix socket ---
+#
+# Build the final live777 binary with:
+#   cargo build --bin live777 --release \
+#     --no-default-features --features source-ipc
+#
+# [stream.cam0]
+# [[stream.cam0.sources]]
+# [stream.cam0.sources.ipc]
+# socket_path = "/run/radarcam/encoder-cam0.sock"
+# codec = "h264"
+# RV1106 u32Profile=100 currently emits SPS bytes 67 64 10 28,
+# i.e. profile-level-id 641028. IpcEncodedSource will refresh this
+# dynamically when it sees an SPS, but using the real value here also
+# makes SDP correct for a subscriber that arrives before the first SPS.
+# profile = "641028"
+# [stream.cam0.sources.ipc.output]
+# payload_type = 96
+# clock_rate = 90000
+
 # --- Native source examples (structured config, recommended) ---
 #
 # Raspberry Pi CSI camera:

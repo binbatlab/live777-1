@@ -13,6 +13,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo check -p liveion --features source-ipc
       - run: cargo test -p liveion --features source-ipc
+      - name: Check final live777 binary with the IPC source enabled
+        run: cargo check --bin live777 --no-default-features --features source-ipc
       # Not running clippy -D warnings here: source-ipc alone (without
       # native-source) is a feature combination upstream's own CI never
       # exercises in isolation, so a bunch of native-source-only code

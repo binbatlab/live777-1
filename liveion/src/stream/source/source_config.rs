@@ -422,15 +422,25 @@ pub struct IpcSourceSpec {
 }
 
 impl IpcSourceSpec {
-    pub fn validate(&self) -> anyhow::Result<()> {
-        if self.stream_id.trim().is_empty() {
-            anyhow::bail!("stream_id cannot be empty");
-        }
+    /// Validate fields that are read directly from TOML.
+    ///
+    /// `stream_id` is intentionally excluded: it is derived from the
+    /// enclosing `[stream.<id>]` table key by `SourceConfig::to_ipc_spec`
+    /// after the generic config-validation pass.
+    pub fn validate_config(&self) -> anyhow::Result<()> {
         if self.socket_path.trim().is_empty() {
             anyhow::bail!("ipc.socket_path cannot be empty");
         }
         video_codec_from_str(&self.codec).map_err(|e| anyhow::anyhow!("ipc.codec: {}", e))?;
         Ok(())
+    }
+
+    /// Validate a fully materialized runtime spec.
+    pub fn validate(&self) -> anyhow::Result<()> {
+        if self.stream_id.trim().is_empty() {
+            anyhow::bail!("stream_id cannot be empty");
+        }
+        self.validate_config()
     }
 }
 

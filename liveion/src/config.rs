@@ -461,7 +461,7 @@ impl SourceConfig {
     pub fn validate(&self) -> anyhow::Result<()> {
         #[cfg(feature = "source-ipc")]
         if let Some(ipc) = self.ipc.as_ref() {
-            return ipc.validate();
+            return ipc.validate_config();
         }
 
         #[cfg(feature = "native-source")]

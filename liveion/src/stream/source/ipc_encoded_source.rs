@@ -481,9 +481,16 @@ mod tests {
         let payload_clone = payload.clone();
 
         let writer = tokio::spawn(async move {
-            write_packet(&mut a, VideoCodec::H264, 1, 1_000_000, 999_000, &payload_clone)
-                .await
-                .unwrap();
+            write_packet(
+                &mut a,
+                VideoCodec::H264,
+                1,
+                1_000_000,
+                999_000,
+                &payload_clone,
+            )
+            .await
+            .unwrap();
         });
 
         let pkt = read_packet(&mut b).await.unwrap().unwrap();
@@ -512,12 +519,19 @@ mod tests {
         };
         assert!(spec.validate().is_ok());
 
+        let mut derived_id = spec.clone();
+        derived_id.stream_id = "".into();
+        assert!(derived_id.validate_config().is_ok());
+        assert!(derived_id.validate().is_err());
+
         let mut bad = spec.clone();
         bad.socket_path = "".into();
+        assert!(bad.validate_config().is_err());
         assert!(bad.validate().is_err());
 
         let mut bad_codec = spec;
         bad_codec.codec = "mp3".into();
+        assert!(bad_codec.validate_config().is_err());
         assert!(bad_codec.validate().is_err());
     }
 }

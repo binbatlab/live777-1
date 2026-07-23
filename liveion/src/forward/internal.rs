@@ -22,6 +22,8 @@ use rtc::peer_connection::configuration::interceptor_registry::{
     configure_twcc_receiver_only, configure_twcc_sender_only,
 };
 use rtc::peer_connection::configuration::media_engine::{MIME_TYPE_OPUS, MIME_TYPE_VP8};
+#[cfg(feature = "source-ipc")]
+use rtc::ice::mdns::MulticastDnsMode;
 use rtc::rtp_transceiver::rtp_sender::{
     RTCPFeedback, RTCRtpCodec, RTCRtpCodingParameters, RTCRtpEncodingParameters, RtpCodecKind,
 };
@@ -1221,7 +1223,9 @@ impl PeerForwardInternal {
         });
         *self.rtcp_egress_counters.lock().unwrap() = Some(egress_counters);
 
-        let s = SettingEngine::default();
+        let mut s = SettingEngine::default();
+        #[cfg(feature = "source-ipc")]
+        s.set_multicast_dns_mode(MulticastDnsMode::Disabled);
 
         let ice_servers = self.ice_server.clone();
         info!(
@@ -1418,7 +1422,9 @@ impl PeerForwardInternal {
         configure_simulcast_extension_headers(&mut m)?;
         let registry = configure_twcc_sender_only(registry, &mut m)?;
 
-        let s = SettingEngine::default();
+        let mut s = SettingEngine::default();
+        #[cfg(feature = "source-ipc")]
+        s.set_multicast_dns_mode(MulticastDnsMode::Disabled);
 
         let ice_servers = self.ice_server.clone();
         info!(
@@ -1445,21 +1451,6 @@ impl PeerForwardInternal {
             gather_complete.clone(),
             connection_state.clone(),
         );
-        for addr in &self.ice_udp_addrs {
-            let socket = std::net::UdpSocket::bind(addr).map_err(|error| {
-                AppError::throw(format!("WebRTC UDP probe bind failed for {addr}: {error}"))
-            })?;
-            socket.set_nonblocking(true).map_err(|error| {
-                AppError::throw(format!(
-                    "WebRTC UDP probe nonblocking failed for {addr}: {error}"
-                ))
-            })?;
-            let _socket = tokio::net::UdpSocket::from_std(socket).map_err(|error| {
-                AppError::throw(format!(
-                    "WebRTC UDP probe Tokio registration failed for {addr}: {error}"
-                ))
-            })?;
-        }
         let peer: Arc<dyn PeerConnection> = Arc::new(
             PeerConnectionBuilder::<std::net::SocketAddr>::new()
                 .with_media_engine(m)

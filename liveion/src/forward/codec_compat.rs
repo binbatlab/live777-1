@@ -23,8 +23,55 @@ pub fn is_h265_codec(codec: &RTCRtpCodec) -> bool {
     codec.mime_type.eq_ignore_ascii_case("video/H265")
 }
 
+pub fn is_h264_codec(codec: &RTCRtpCodec) -> bool {
+    codec.mime_type.eq_ignore_ascii_case("video/H264")
+}
+
 pub fn is_av1_codec(codec: &RTCRtpCodec) -> bool {
     codec.mime_type.eq_ignore_ascii_case("video/AV1")
+}
+
+fn h264_profile_level_id(codec: &RTCRtpCodec) -> Option<(u8, u8, u8)> {
+    let value = fmtp_param(&codec.sdp_fmtp_line, "profile-level-id")?;
+    if value.len() != 6 {
+        return None;
+    }
+    let raw = u32::from_str_radix(&value, 16).ok()?;
+    Some(((raw >> 16) as u8, (raw >> 8) as u8, raw as u8))
+}
+
+pub fn h264_codecs_are_compatible(candidate: &RTCRtpCodec, publisher: &RTCRtpCodec) -> bool {
+    if !is_h264_codec(candidate) || !is_h264_codec(publisher) {
+        return false;
+    }
+    if candidate.clock_rate != publisher.clock_rate || candidate.channels != publisher.channels {
+        return false;
+    }
+
+    let candidate_packetization =
+        fmtp_param(&candidate.sdp_fmtp_line, "packetization-mode").unwrap_or_else(|| "0".into());
+    let publisher_packetization =
+        fmtp_param(&publisher.sdp_fmtp_line, "packetization-mode").unwrap_or_else(|| "0".into());
+    if candidate_packetization != publisher_packetization {
+        return false;
+    }
+
+    let (
+        Some((candidate_profile, _, candidate_level)),
+        Some((publisher_profile, _, publisher_level)),
+    ) = (
+        h264_profile_level_id(candidate),
+        h264_profile_level_id(publisher),
+    )
+    else {
+        return true;
+    };
+
+    // Embedded encoders may set constraint flags that browsers omit from
+    // their offer (for example 641028 versus 640032). The encoded profile is
+    // still compatible when profile_idc matches and the receiver advertises
+    // an equal or higher level.
+    candidate_profile == publisher_profile && candidate_level >= publisher_level
 }
 
 /// Merge H265 parameters from the publisher fmtp into the selected
@@ -217,6 +264,7 @@ pub fn sender_track_codec_compatible(
     selected_codec: &RTCRtpCodec,
 ) -> bool {
     rtp_codecs_match(sender_track_codec, selected_codec)
+        || h264_codecs_are_compatible(sender_track_codec, selected_codec)
         || (h265_codecs_are_compatible(sender_track_codec, selected_codec)
             && h265_candidate_level_sufficient(sender_track_codec, selected_codec))
         || av1_codecs_are_compatible(sender_track_codec, selected_codec)
@@ -233,6 +281,13 @@ pub fn select_compatible_codec(
 
     if exact_match.is_some() {
         return exact_match;
+    }
+
+    if is_h264_codec(publisher_codec) {
+        return codecs
+            .iter()
+            .find(|candidate| h264_codecs_are_compatible(&candidate.rtp_codec, publisher_codec))
+            .cloned();
     }
 
     if is_h265_codec(publisher_codec) {

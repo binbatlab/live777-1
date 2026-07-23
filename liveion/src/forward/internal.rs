@@ -17,13 +17,13 @@ use crate::forward::message::{ForwardInfo, SessionInfo};
 use crate::forward::rtcp::RtcpMessage;
 use crate::result::Result;
 use crate::{metrics, new_broadcast_channel};
+#[cfg(feature = "source-ipc")]
+use rtc::ice::mdns::MulticastDnsMode;
 use rtc::peer_connection::configuration::interceptor_registry::{
     configure_nack, configure_rtcp_reports, configure_simulcast_extension_headers,
     configure_twcc_receiver_only, configure_twcc_sender_only,
 };
 use rtc::peer_connection::configuration::media_engine::{MIME_TYPE_OPUS, MIME_TYPE_VP8};
-#[cfg(feature = "source-ipc")]
-use rtc::ice::mdns::MulticastDnsMode;
 use rtc::rtp_transceiver::rtp_sender::{
     RTCPFeedback, RTCRtpCodec, RTCRtpCodingParameters, RTCRtpEncodingParameters, RtpCodecKind,
 };
@@ -36,6 +36,7 @@ use webrtc::peer_connection::{
 };
 use webrtc::rtp_transceiver::{RTCRtpTransceiverDirection, RTCRtpTransceiverInit, RtpSender};
 
+use super::codec_compat::select_compatible_codec;
 use super::media::{MediaGenerationDecision, MediaInfo, MediaProfile};
 use super::message::{CascadeInfo, ForwardEvent};
 use super::publish::PublishRTCPeerConnection;
@@ -1223,6 +1224,7 @@ impl PeerForwardInternal {
         });
         *self.rtcp_egress_counters.lock().unwrap() = Some(egress_counters);
 
+        #[allow(unused_mut)]
         let mut s = SettingEngine::default();
         #[cfg(feature = "source-ipc")]
         s.set_multicast_dns_mode(MulticastDnsMode::Disabled);
@@ -1422,6 +1424,7 @@ impl PeerForwardInternal {
         configure_simulcast_extension_headers(&mut m)?;
         let registry = configure_twcc_sender_only(registry, &mut m)?;
 
+        #[allow(unused_mut)]
         let mut s = SettingEngine::default();
         #[cfg(feature = "source-ipc")]
         s.set_multicast_dns_mode(MulticastDnsMode::Disabled);
@@ -1470,8 +1473,22 @@ impl PeerForwardInternal {
         // Use the publisher's negotiated codec for the subscriber's sender encoding.
         // This ensures the encoding codec matches what the publisher is actually sending,
         // so the rtc-layer write_rtp uses the correct payload type.
-        let video_codec = self.publisher_codec(RtpCodecKind::Video).await;
-        let audio_codec = self.publisher_codec(RtpCodecKind::Audio).await;
+        let video_codec = self
+            .publisher_codec(RtpCodecKind::Video)
+            .await
+            .map(|publisher| {
+                select_compatible_codec(&publisher, &media_info._codec)
+                    .map(|selected| selected.rtp_codec)
+                    .unwrap_or(publisher)
+            });
+        let audio_codec = self
+            .publisher_codec(RtpCodecKind::Audio)
+            .await
+            .map(|publisher| {
+                select_compatible_codec(&publisher, &media_info._codec)
+                    .map(|selected| selected.rtp_codec)
+                    .unwrap_or(publisher)
+            });
 
         Self::new_sender(
             &peer,

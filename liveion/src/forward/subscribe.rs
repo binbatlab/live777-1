@@ -926,6 +926,47 @@ mod tests {
     }
 
     #[test]
+    fn h264_codec_selection_accepts_matching_high_profile_with_higher_level() {
+        let source_codec = RTCRtpCodec {
+            mime_type: "video/H264".to_string(),
+            clock_rate: 90000,
+            channels: 0,
+            sdp_fmtp_line: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=641028"
+                .to_string(),
+            rtcp_feedback: vec![],
+        };
+        let baseline = RTCRtpCodecParameters {
+            rtp_codec: RTCRtpCodec {
+                mime_type: "video/H264".to_string(),
+                clock_rate: 90000,
+                channels: 0,
+                sdp_fmtp_line:
+                    "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42001f"
+                        .to_string(),
+                rtcp_feedback: vec![],
+            },
+            payload_type: 102,
+        };
+        let high = RTCRtpCodecParameters {
+            rtp_codec: RTCRtpCodec {
+                mime_type: "video/H264".to_string(),
+                clock_rate: 90000,
+                channels: 0,
+                sdp_fmtp_line:
+                    "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=640032"
+                        .to_string(),
+                rtcp_feedback: vec![],
+            },
+            payload_type: 123,
+        };
+
+        let selected = select_compatible_codec(&source_codec, &[baseline, high])
+            .expect("high-profile browser offer should be compatible");
+
+        assert_eq!(selected.payload_type, 123);
+    }
+
+    #[test]
     fn h265_codec_selection_prefers_matching_profile_over_first_h265() {
         let source_codec = RTCRtpCodec {
             mime_type: "video/H265".to_string(),

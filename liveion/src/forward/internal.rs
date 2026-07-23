@@ -1469,7 +1469,10 @@ impl PeerForwardInternal {
                 .with_udp_addrs(self.ice_udp_addrs.clone())
                 .with_configuration(config)
                 .build()
-                .await?,
+                .await
+                .map_err(|error| {
+                    AppError::throw(format!("WebRTC subscription peer build failed: {error}"))
+                })?,
         );
         handler.set_peer(Arc::downgrade(&peer)).await;
 
@@ -1485,14 +1488,24 @@ impl PeerForwardInternal {
             media_info.video_transceiver.1,
             video_codec,
         )
-        .await?;
+        .await
+        .map_err(|error| {
+            AppError::throw(format!(
+                "WebRTC video subscription sender setup failed: {error:?}"
+            ))
+        })?;
         Self::new_sender(
             &peer,
             RtpCodecKind::Audio,
             media_info.audio_transceiver.1,
             audio_codec,
         )
-        .await?;
+        .await
+        .map_err(|error| {
+            AppError::throw(format!(
+                "WebRTC audio subscription sender setup failed: {error:?}"
+            ))
+        })?;
 
         Ok((peer, gather_complete, connection_state))
     }

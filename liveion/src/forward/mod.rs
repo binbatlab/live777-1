@@ -459,11 +459,19 @@ impl PeerForward {
     ) -> Result<(RTCSessionDescription, String)> {
         offer.sdp = strip_unusable_remote_ice_candidates(&offer.sdp);
         let media_info = MediaInfo::try_from(unmarshal_sdp(&offer.sdp)?)?;
-        let (peer, gather_complete, connection_state) =
-            self.new_subscription_peer(media_info.clone()).await?;
+        let (peer, gather_complete, connection_state) = self
+            .new_subscription_peer(media_info.clone())
+            .await
+            .map_err(|error| {
+                AppError::throw(format!("WHEP subscription peer setup failed: {error:?}"))
+            })?;
 
         let (sdp, session) = (
-            peer_complete(offer, peer.clone(), gather_complete).await?,
+            peer_complete(offer, peer.clone(), gather_complete)
+                .await
+                .map_err(|error| {
+                    AppError::throw(format!("WHEP answer negotiation failed: {error:?}"))
+                })?,
             get_peer_id(&peer),
         );
 
@@ -592,9 +600,16 @@ async fn peer_complete(
     peer: Arc<dyn PeerConnection>,
     gather_complete: Arc<Notify>,
 ) -> Result<RTCSessionDescription> {
-    peer.set_remote_description(offer).await?;
-    let answer = peer.create_answer(None).await?;
-    peer.set_local_description(answer).await?;
+    peer.set_remote_description(offer)
+        .await
+        .map_err(|error| AppError::throw(format!("set remote WHEP offer failed: {error}")))?;
+    let answer = peer
+        .create_answer(None)
+        .await
+        .map_err(|error| AppError::throw(format!("create WHEP answer failed: {error}")))?;
+    peer.set_local_description(answer)
+        .await
+        .map_err(|error| AppError::throw(format!("set local WHEP answer failed: {error}")))?;
 
     let deadline = tokio::time::sleep(ANSWER_ICE_CANDIDATE_TIMEOUT);
     tokio::pin!(deadline);

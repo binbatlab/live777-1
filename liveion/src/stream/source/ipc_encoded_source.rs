@@ -47,11 +47,11 @@ use rtc_rtp::codec::vp8::Vp8Payloader;
 use rtc_rtp::codec::vp9::Vp9Payloader;
 use rtc_rtp::packetizer::{Packetizer as _, Payloader, new_packetizer};
 use rtc_rtp::sequence::new_random_sequencer;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, RwLock};
 use tokio::io::{AsyncReadExt, AsyncWriteExt as _};
 use tokio::net::UnixStream;
-use tokio::sync::{RwLock, broadcast};
+use tokio::sync::{RwLock as AsyncRwLock, broadcast};
 use tracing::{debug, error, info, warn};
 
 const HEADER_LEN: usize = 25;
@@ -110,7 +110,7 @@ pub struct IpcEncodedSource {
     shutdown_tx: Option<tokio::sync::oneshot::Sender<()>>,
     task_handle: Option<tokio::task::JoinHandle<()>>,
     #[cfg(feature = "source")]
-    dynamic_profile: Arc<RwLock<Option<String>>>,
+    dynamic_profile: Arc<AsyncRwLock<Option<String>>>,
 }
 
 impl IpcEncodedSource {
@@ -129,17 +129,19 @@ impl IpcEncodedSource {
             shutdown_tx: None,
             task_handle: None,
             #[cfg(feature = "source")]
-            dynamic_profile: Arc::new(RwLock::new(None)),
+            dynamic_profile: Arc::new(AsyncRwLock::new(None)),
         })
     }
 
-    async fn emit_state_change(
+    fn emit_state_change(
         state: &Arc<RwLock<StreamSourceState>>,
         state_tx: &broadcast::Sender<StateChangeEvent>,
         new_state: StreamSourceState,
         error: Option<String>,
     ) {
-        let mut s = state.write().await;
+        let mut s = state
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let old_state = *s;
         if old_state != new_state {
             *s = new_state;
@@ -168,7 +170,7 @@ impl IpcEncodedSource {
         rtp_tx: broadcast::Sender<MediaPacket>,
         state: Arc<RwLock<StreamSourceState>>,
         state_tx: broadcast::Sender<StateChangeEvent>,
-        #[cfg(feature = "source")] dynamic_profile: Arc<RwLock<Option<String>>>,
+        #[cfg(feature = "source")] dynamic_profile: Arc<AsyncRwLock<Option<String>>>,
         mut shutdown_rx: tokio::sync::oneshot::Receiver<()>,
     ) {
         // Fallback RTP timestamp delta for the very rare case of a
@@ -204,8 +206,7 @@ impl IpcEncodedSource {
                     StreamSourceState::Initializing
                 },
                 None,
-            )
-            .await;
+            );
 
             debug!("[{}] connecting to {}", stream_id, socket_path);
             let mut stream = match UnixStream::connect(&socket_path).await {
@@ -217,8 +218,7 @@ impl IpcEncodedSource {
                         &state_tx,
                         StreamSourceState::Disconnected,
                         Some(format!("connect failed: {e}")),
-                    )
-                    .await;
+                    );
                     reconnect_count += 1;
 
                     if let Ok(()) | Err(tokio::sync::oneshot::error::TryRecvError::Closed) =
@@ -233,7 +233,7 @@ impl IpcEncodedSource {
             };
 
             info!("[{}] connected", stream_id);
-            Self::emit_state_change(&state, &state_tx, StreamSourceState::Connected, None).await;
+            Self::emit_state_change(&state, &state_tx, StreamSourceState::Connected, None);
             reconnect_count = 0;
 
             let disconnect_reason = loop {
@@ -310,8 +310,7 @@ impl IpcEncodedSource {
                 &state_tx,
                 StreamSourceState::Disconnected,
                 disconnect_reason,
-            )
-            .await;
+            );
             reconnect_count += 1;
 
             if let Ok(()) | Err(tokio::sync::oneshot::error::TryRecvError::Closed) =
@@ -322,7 +321,7 @@ impl IpcEncodedSource {
             tokio::time::sleep(std::time::Duration::from_millis(RECONNECT_INTERVAL_MS)).await;
         }
 
-        Self::emit_state_change(&state, &state_tx, StreamSourceState::Disconnected, None).await;
+        Self::emit_state_change(&state, &state_tx, StreamSourceState::Disconnected, None);
         info!("[{}] task exited", stream_id);
     }
 }
@@ -334,7 +333,10 @@ impl StreamSource for IpcEncodedSource {
     }
 
     fn state(&self) -> StreamSourceState {
-        *self.state.blocking_read()
+        *self
+            .state
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     async fn start(&mut self) -> Result<()> {
@@ -375,8 +377,7 @@ impl StreamSource for IpcEncodedSource {
             &self.state_tx,
             StreamSourceState::Disconnected,
             None,
-        )
-        .await;
+        );
         Ok(())
     }
 
@@ -506,6 +507,20 @@ mod tests {
         let (a, mut b) = UnixStream::pair().unwrap();
         drop(a);
         assert!(read_packet(&mut b).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn synchronous_state_query_is_safe_inside_runtime() {
+        let source = IpcEncodedSource::new(IpcSourceSpec {
+            stream_id: "cam0".into(),
+            socket_path: "/run/radarcam/encoder-cam0.sock".into(),
+            codec: "h264".into(),
+            profile: "42001f".into(),
+            output: super::super::source_config::OutputSpec::default(),
+        })
+        .unwrap();
+
+        assert_eq!(source.state(), StreamSourceState::Initializing);
     }
 
     #[test]
